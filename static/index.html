@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KMP Mealy Machine</title>
+  <!-- Tailwind CDN is OK for development; switch to proper build for production -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-6">
+  <div class="max-w-3xl w-full bg-white rounded-2xl shadow-lg p-6">
+    <h1 class="text-2xl font-semibold mb-4">KMP Mealy Visualizer</h1>
+
+    <label class="block mb-2">Text (allowed: a,b,0,1)</label>
+    <textarea id="text" rows="3" class="w-full border rounded p-2 mb-4" placeholder="Enter the text to search in">0010101010011</textarea>
+
+    <label class="block mb-2">Pattern (allowed: a,b,0,1)</label>
+    <input id="pattern" class="w-full border rounded p-2 mb-4" placeholder="Enter pattern to search for" value="1010" />
+
+    <div class="flex gap-3 mb-4">
+      <button id="btnContains" class="px-4 py-2 bg-indigo-600 text-white rounded">Contains</button>
+      <button id="btnCount" class="px-4 py-2 bg-green-600 text-white rounded">Count (non-overlap)</button>
+      <button id="btnVisualize" class="px-4 py-2 bg-amber-500 text-black rounded">Visualize Mealy</button>
+    </div>
+
+    <div id="result" class="mb-4 text-sm"></div>
+    <div id="imageWrap" class="mt-4"></div>
+
+    <div class="text-xs text-gray-500 mt-6">
+      Note: pattern and text must use only the characters a,b or 0,1. Open this page from the Flask server at <code>http://127.0.0.1:5000</code>.
+    </div>
+  </div>
+
+<script>
+(function(){
+  // Use same origin - so make sure you open the page from Flask (http://127.0.0.1:5000)
+  const API_BASE = ''; // relative path -> hits same origin
+
+  const $ = id => document.getElementById(id);
+  const textEl = $('text'), patternEl = $('pattern'), resultEl = $('result'), imageWrap = $('imageWrap');
+
+  async function postJson(path, body){
+    try {
+      const res = await fetch(API_BASE + path, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      // if server returned HTML (like a 404 page), attempt to show it instead of throwing parsing error
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        // try to get text body for helpful error message
+        const text = await res.text();
+        throw new Error(`Server ${res.status}: ${text.slice(0,200)}`);
+      }
+      if (ct.includes('application/json')) {
+        return await res.json();
+      } else {
+        // unexpected content-type
+        const txt = await res.text();
+        return { error: 'Invalid response content-type: ' + ct, raw: txt.slice(0,200) };
+      }
+    } catch (err) {
+      return { error: err.message || String(err) };
+    }
+  }
+
+  async function doContains(){
+    resultEl.textContent = 'Checking...';
+    const res = await postJson('/api/contains', { text: textEl.value.trim(), pattern: patternEl.value.trim() });
+    if (res.error) resultEl.textContent = 'Error: ' + res.error;
+    else resultEl.textContent = 'Contains? ' + res.contains;
+  }
+
+  async function doCount(){
+    resultEl.textContent = 'Counting...';
+    const res = await postJson('/api/count', { text: textEl.value.trim(), pattern: patternEl.value.trim() });
+    if (res.error) resultEl.textContent = 'Error: ' + res.error;
+    else resultEl.textContent = 'Non-overlapping count: ' + res.count;
+  }
+
+  async function doVisualize(){
+    resultEl.textContent = 'Rendering...';
+    imageWrap.innerHTML = '';
+    const res = await postJson('/api/visualize', { pattern: patternEl.value.trim() });
+    if (res.error) {
+      resultEl.textContent = 'Error: ' + res.error;
+      return;
+    }
+    resultEl.textContent = 'Rendered below.';
+    const img = document.createElement('img');
+    img.src = res.image;
+    img.alt = 'Mealy machine';
+    img.className = 'mt-4 w-full border rounded';
+    imageWrap.appendChild(img);
+  }
+
+  // attach event listeners (avoid polluting global names)
+  $('btnContains').addEventListener('click', doContains);
+  $('btnCount').addEventListener('click', doCount);
+  $('btnVisualize').addEventListener('click', doVisualize);
+
+})();
+</script>
+</body>
+</html>
